@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">MapDemo</string>
+    <string name="location_permission_denied">User denied permission for device location.</string>
+</resources>

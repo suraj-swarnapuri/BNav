@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- *** ADD *** -->
+    <string name="redirect_url">my-devlab-app://auth</string>
+    <string name="client_id">PpuJU4zZPZcv5k1J</string>
+    <string name="routing_url">http://www.mapquestapi.com/directions/v2/route?key=FFwjmbKJ4ERspz30k1Om94ytXuQri3MS</string>
+</resources>
