@@ -15,24 +15,14 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.android.volley.Request;
-import com.android.volley.RequestQueue;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.StringRequest;
-import com.android.volley.toolbox.Volley;
 import com.esri.arcgisruntime.geometry.Point;
 import com.esri.arcgisruntime.layers.ArcGISMapImageLayer;
 import com.esri.arcgisruntime.mapping.ArcGISMap;
 import com.esri.arcgisruntime.mapping.Basemap;
-import com.esri.arcgisruntime.mapping.Viewpoint;
 import com.esri.arcgisruntime.mapping.view.MapView;
 import com.esri.arcgisruntime.security.AuthenticationManager;
 import com.esri.arcgisruntime.security.DefaultAuthenticationChallengeHandler;
 import com.esri.arcgisruntime.security.OAuthConfiguration;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -43,9 +33,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
-import java.net.ProtocolException;
 import java.net.URL;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -55,43 +44,60 @@ public class MainActivity extends AppCompatActivity {
     private Point _endPoint;
     private JSONArray _route = null;
     private boolean routeOn = false;
-    private String _nextTurn = "";
-    private Point _nextStop = null;
-    private boolean nextDirection = false;
+    private ArrayList<JSONObject> directionQueue = new ArrayList();
+    private Location _nextStop = new Location(LocationManager.GPS_PROVIDER);
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        startLocation();
-        mapView = findViewById(R.id.mapView);
+
+        //mapView = findViewById(R.id.mapView);
         Button b = findViewById(R.id.route);
+        mapView = findViewById(R.id.mapView);
 
-        b.setOnClickListener(v -> startRoute(v));
+
+        _locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+        b.setOnClickListener(v -> initRoute(v));
         loadMap();
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        _nextStop.set(_locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER));
+        startLocation();
 
-
-        //   setupOAuthManager();
-        //new Thread(() -> findRoute()).start();
 
 
     }
 
 
     //starts the location service
+
     private void startLocation() {
         _locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
         LocationListener locationListener = new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
-                EditText et = findViewById(R.id.latLong);
+                showError("Location Changed");
+                TextView tv = findViewById(R.id.textView);
 
+                String msg = String.format("Lat: %f  Long: %f \n Distance to next location: %f meters", location.getLatitude(), location.getLongitude(), _nextStop.distanceTo(location));
+                tv.setText(msg);
+                //5 meter buffer
+                if (_nextStop.distanceTo(location) < 5) {
+                    routeOn = true;
+                }
 
-                String msg = String.format("Lat: %f  Long: %f", location.getLatitude(), location.getLongitude());
-                et.setText(msg);
-                Viewpoint vp = new Viewpoint(location.getLatitude(), location.getLongitude(), 900);
-                mapView.setViewpoint(vp);
+                // Viewpoint vp = new Viewpoint(location.getLatitude(), location.getLongitude(), 900);
+                //mapView.setViewpoint(vp);
                 showError("location changed");
                 _startPoint = new Point(location.getLatitude(), location.getLongitude());
 
@@ -122,7 +128,9 @@ public class MainActivity extends AppCompatActivity {
             // for ActivityCompat#requestPermissions for more details.
             return;
         }
-       // _locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
+
+
+        _locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 300, 0, locationListener);
     }
 
     /*
@@ -143,15 +151,15 @@ public class MainActivity extends AppCompatActivity {
         }
         Location location = _locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
         Location location2 = _locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-        ArcGISMap map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, location.getLatitude(), location.getLongitude(), 1000);
-        EditText et = findViewById(R.id.latLong);
-        String msg = String.format("Lat: %f  Long: %f\nLat2: %f  Long2: %f", location.getLatitude(), location.getLongitude(),location2.getLatitude(), location2.getLongitude());
-        et.setText(msg);
+        _startPoint = new Point(location.getLatitude(), location.getLongitude());
+        ArcGISMap map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, location.getLatitude(), location.getLongitude(), 20);
+        // ArcGISMap map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, 30, -96, 100);
+
         ArcGISMapImageLayer layer1 = new ArcGISMapImageLayer("http://gis.tamu.edu/arcgis/rest/services/FCOR/ADA_120717/MapServer");
         map.getBasemap().getBaseLayers().add(layer1);
+
         mapView.setMap(map);
-        showError("location changed");
-        _startPoint = new Point(location.getLatitude(), location.getLongitude());
+
 
 
     }
@@ -189,13 +197,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void startRoute(android.view.View v) {
+    public void initRoute(android.view.View v) {
         if(_startPoint == null){
             return;
         }
-        _endPoint = new Point(30.582889, -96.335470);
-
-
+        _endPoint = new Point(30.578172, -96.320299);
+        //start thread to get route
       try {
          Thread t = new Thread(()-> {
              try {
@@ -206,24 +213,32 @@ public class MainActivity extends AppCompatActivity {
          });
          t.start();
          t.join();
-
+          // add directions to directionQueue
           for (int i = 0; i < _route.length(); i++) {
               JSONObject direction = null;
               try {
                   direction = _route.getJSONObject(i);
+                  directionQueue.add(direction);
                   System.out.println(direction.toString());
-                  parseDirections(direction);
 
               } catch (Exception e) {
                   showError(e.getMessage());
               }
 
           }
+          System.out.println("directionQueue ready");
 
-
+          new Thread(() -> {
+              try {
+                  startRoute();
+              } catch (JSONException e) {
+                  e.printStackTrace();
+              }
+          }).start();
       }catch (Exception e){
           showError(e.getMessage());
       }
+        //start thread to track route.
 
 
 
@@ -234,18 +249,45 @@ public class MainActivity extends AppCompatActivity {
         double lng = direction.getJSONObject("startPoint").getDouble("lng");
 
         int turnType = direction.getInt("turnType");
-        _nextTurn = getTurn(turnType);
-        _nextStop = new Point(lat,lng);
 
 
+    }
 
+    private void startRoute() throws JSONException {
+        //startLocation();
+        routeOn = true;
+        while (!directionQueue.isEmpty()) {
+            if (routeOn) {
+                System.out.println("routeON");
+                JSONObject direction = directionQueue.remove(0);
+                int heading = direction.getInt("direction");
+                double lat = direction.getJSONObject("startPoint").getDouble("lat");
+                double lng = direction.getJSONObject("startPoint").getDouble("lng");
+                _nextStop.setLongitude(lng);
+                _nextStop.setLatitude(lat);
+                int turnType = direction.getInt("turnType");
+
+
+                runOnUiThread(() -> {
+
+                    String msg = String.format("You are at (%f,%f) you need to turn %s heading %s ", lat, lng, getTurn(turnType), getHeading(heading));
+                    EditText et = findViewById(R.id.latLong);
+                    et.setText(msg);
+
+                });
+                routeOn = false;
+                System.out.println("routeOFF");
+            }
+
+
+        }
     }
 
     private void getRoute() throws IOException {
 
         String url = getResources().getString(R.string.routing_url);
         url+=String.format("&from=%f,%f",_startPoint.getX(),_startPoint.getY());
-        url+=String.format("&to=%f,%f&routeType=pedestrian",_endPoint.getX(),_endPoint.getY());
+        url += String.format("&to=%f,%f&routeType=pedestrian&unit=k", _endPoint.getX(), _endPoint.getY());
 
         URL obj = new URL(url);
         HttpURLConnection con = (HttpURLConnection) obj.openConnection();
@@ -272,6 +314,7 @@ public class MainActivity extends AppCompatActivity {
 
         //print result
         try {
+            System.out.println("route retrieved");
             parseJson(response.toString());
         }catch (Exception e){
             showError(e.getMessage());
@@ -294,8 +337,9 @@ public class MainActivity extends AppCompatActivity {
         Log.d("FindRoute", message);
         Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
     }
-    private String getTurn(int turnId){
-        switch (turnId){
+
+    private String getTurn(int headId) {
+        switch (headId) {
             case 0:
                 return "straight";
             case 1:
@@ -329,6 +373,32 @@ public class MainActivity extends AppCompatActivity {
 
             default:
                 return "No Turn Id recognized";
+
+        }
+    }
+
+    private String getHeading(int turnId) {
+        switch (turnId){
+            case 0:
+                return "straight";
+            case 1:
+                return "north";
+            case 2:
+                return "northwest";
+            case 3:
+                return "northeast";
+            case 4:
+                return "south";
+            case 5:
+                return "southeast";
+            case 6:
+                return "southwest";
+            case 7:
+                return "west";
+            case 8:
+                return "east";
+            default:
+                return "No Head Id recognized";
 
         }
     }
