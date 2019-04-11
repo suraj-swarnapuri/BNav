@@ -19,6 +19,7 @@ import com.esri.arcgisruntime.geometry.Point;
 import com.esri.arcgisruntime.layers.ArcGISMapImageLayer;
 import com.esri.arcgisruntime.mapping.ArcGISMap;
 import com.esri.arcgisruntime.mapping.Basemap;
+import com.esri.arcgisruntime.mapping.Viewpoint;
 import com.esri.arcgisruntime.mapping.view.MapView;
 import com.esri.arcgisruntime.security.AuthenticationManager;
 import com.esri.arcgisruntime.security.DefaultAuthenticationChallengeHandler;
@@ -79,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+
     //starts the location service
 
     private void startLocation() {
@@ -92,13 +94,13 @@ public class MainActivity extends AppCompatActivity {
                 String msg = String.format("Lat: %f  Long: %f \n Distance to next location: %f meters", location.getLatitude(), location.getLongitude(), _nextStop.distanceTo(location));
                 tv.setText(msg);
                 //5 meter buffer
-                if (_nextStop.distanceTo(location) < 5) {
+                if (_nextStop.distanceTo(location) < 1) {
                     routeOn = true;
                 }
 
-                // Viewpoint vp = new Viewpoint(location.getLatitude(), location.getLongitude(), 900);
-                //mapView.setViewpoint(vp);
-                showError("location changed");
+                Viewpoint vp = new Viewpoint(location.getLatitude(), location.getLongitude(), 400);
+                mapView.setViewpoint(vp);
+
                 _startPoint = new Point(location.getLatitude(), location.getLongitude());
 
             }
@@ -130,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
 
-        _locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 300, 0, locationListener);
+        _locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 10000, 0, locationListener);
     }
 
     /*
